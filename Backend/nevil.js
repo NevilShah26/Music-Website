@@ -179,3 +179,44 @@ const removeSongFromPlaylist = async (req, res) => {
         return res.json({ success: false, message: error.message });
     }
 };
+
+//deleting playlist 
+const deletePlaylist = async (req, res) => {
+    const { playlistName, userId } = req.body;
+
+    // Validate input
+    if (!playlistName || !userId) {
+        return res.json({ success: false, message: "Missing playlist name or user ID" });
+    }
+
+    try {
+        // Find the Playlist_ID
+        const [playlistRows] = await db.query(
+            "SELECT Playlist_ID FROM playlist WHERE Playlist_Name = ? AND User_ID = ?",
+            [playlistName, userId]
+        );
+
+        if (playlistRows.length === 0) {
+            return res.json({ success: false, message: "Playlist not found for this user" });
+        }
+
+        const playlistId = playlistRows[0].Playlist_ID;
+
+        //  Delete related entries from playlist_songs (if any)
+        await db.query(
+            "DELETE FROM playlist_songs WHERE Playlist_ID = ?",
+            [playlistId]
+        );
+
+        // Delete the playlist itself
+        await db.query(
+            "DELETE FROM playlist WHERE Playlist_ID = ?",
+            [playlistId]
+        );
+
+        return res.json({ success: true, message: "Playlist deleted successfully" });
+
+    } catch (error) {
+        return res.json({ success: false, message: error.message });
+    }
+};
