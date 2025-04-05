@@ -220,3 +220,43 @@ const deletePlaylist = async (req, res) => {
         return res.json({ success: false, message: error.message });
     }
 };
+
+//get recommended songs based on the artists in their playlists 
+const getRecommendedSongs = async (req, res) => {
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.json({ success: false, message: "Missing user ID" });
+    }
+
+    try {
+        const [recommendedSongs] = await db.query(
+            `
+            SELECT songID, songName, ArtistName, AlbumReleaseDate
+            FROM newsong 
+            JOIN artists  ON newsong.ArtistID = artists.ArtistID
+            WHERE artistID IN (
+                SELECT DISTINCT artistID
+                FROM playlist 
+                JOIN playlist_songs  ON playlist.Playlist_ID = playlist_songs.Playlist_ID
+                JOIN newsong  ON playlist_songs.Song_ID = newsong.songID
+                WHERE User_ID = ?
+            )
+            AND songID NOT IN (
+                SELECT Song_ID
+                FROM playlist 
+                JOIN playlist_songs  ON playlist.Playlist_ID = playlist_songs.Playlist_ID
+                WHERE playlist.User_ID = ?
+            )
+            ORDER BY newsong.Album_Release_Date DESC
+            LIMIT 10;
+            `,
+            [userId, userId]
+        );
+
+        return res.json({ success: true, recommendations: recommendedSongs });
+    } catch (error) {
+        return res.json({ success: false, message: error.message });
+    }
+};
+
