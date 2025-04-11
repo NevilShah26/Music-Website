@@ -233,24 +233,24 @@ const getRecommendedSongs = async (req, res) => {
     try {
         const [recommendedSongs] = await db.query(
             `
-            SELECT songID, songName, ArtistName, AlbumReleaseDate
-            FROM newsong 
-            JOIN artists  ON newsong.ArtistID = artists.ArtistID
-            WHERE artistID IN (
-                SELECT DISTINCT artistID
-                FROM playlist 
-                JOIN playlist_songs  ON playlist.Playlist_ID = playlist_songs.Playlist_ID
-                JOIN newsong  ON playlist_songs.Song_ID = newsong.songID
-                WHERE User_ID = ?
-            )
-            AND songID NOT IN (
-                SELECT Song_ID
-                FROM playlist 
-                JOIN playlist_songs  ON playlist.Playlist_ID = playlist_songs.Playlist_ID
-                WHERE playlist.User_ID = ?
-            )
-            ORDER BY newsong.Album_Release_Date DESC
-            LIMIT 10;
+            SELECT newsong.songID, newsong.songName, artists.ArtistName, newsong.AlbumReleaseDate
+FROM newsong 
+JOIN artists ON newsong.artistID = artists.ArtistID
+WHERE newsong.artistID IN (
+    SELECT DISTINCT newsong.artistID
+    FROM playlist 
+    JOIN playlist_songs ON playlist.Playlist_ID = playlist_songs.Playlist_ID
+    JOIN newsong  ON playlist_songs.Song_ID = newsong.songID
+    WHERE playlist.User_ID = ?
+)
+AND newsong.songID NOT IN (
+    SELECT playlist_songs.Song_ID
+    FROM playlist 
+    JOIN playlist_songs  ON playlist.Playlist_ID = playlist_songs.Playlist_ID
+    WHERE playlist.User_ID = ?
+)
+ORDER BY newsong.AlbumReleaseDate DESC
+LIMIT 10;
             `,
             [userId, userId]
         );
@@ -261,3 +261,33 @@ const getRecommendedSongs = async (req, res) => {
     }
 };
 
+const getPlaylistByName = async (req, res) => {
+    const { userId, playlistName } = req.body;
+
+    if (!userId || !playlistName) {
+        return res.json({ success: false, message: "Missing userId or playlistName" });
+    }
+
+    try {
+        //Check if user exists
+        const [userRows] = await db.query("SELECT * FROM User WHERE User_ID = ?", [userId]);
+        if (userRows.length === 0) {
+            return res.json({ success: false, message: "User does not exist" });
+        }
+
+        //Check if playlist exists for that user
+        const [playlistRows] = await db.query(
+            "SELECT * FROM playlist WHERE Playlist_Name = ? AND User_ID = ?",
+            [playlistName, userId]
+        );
+        if (playlistRows.length === 0) {
+            return res.json({ success: false, message: "Playlist not found for this user" });
+        }
+
+        //Return playlist info
+        return res.json({ success: true, playlist: playlistRows[0] });
+
+    } catch (error) {
+        return res.json({ success: false, message: error.message });
+    }
+};
