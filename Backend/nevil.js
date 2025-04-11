@@ -291,3 +291,132 @@ const getPlaylistByName = async (req, res) => {
         return res.json({ success: false, message: error.message });
     }
 };
+
+//search songs by songname
+const searchSongByName = async (req, res) => {
+    const { songName } = req.body;
+
+    if (!songName) {
+        return res.json({ success: false, message: "Missing song name to search" });
+    }
+
+    try {
+        const [songs] = await db.query(
+            `SELECT 
+                ns.songID, 
+                ns.songName, 
+                a.ArtistName, 
+                ns.DurationMS, 
+                ns.SpotifyURL
+            FROM newsong ns
+            JOIN artists a ON ns.artistID = a.ArtistID
+            WHERE ns.songName LIKE CONCAT('%', ?, '%')
+            ORDER BY ns.songName = ? DESC`,
+            [songName, songName]
+        );
+
+        return res.json({ success: true, songs });
+
+    } catch (error) {
+        return res.json({ success: false, message: error.message });
+    }
+};
+
+//rename playlist name
+const renamePlaylist = async (req, res) => {
+    const { username, oldPlaylistName, newPlaylistName } = req.body;
+
+    //Validate input
+    if (!username || !oldPlaylistName || !newPlaylistName) {
+        return res.json({ success: false, message: "Missing required fields" });
+    }
+
+    try {
+        //Get User_ID from username
+        const [userRows] = await db.query("SELECT User_ID FROM User WHERE userName = ?", [username]);
+        if (userRows.length === 0) {
+            return res.json({ success: false, message: "User does not exist" });
+        }
+        const userID = userRows[0].User_ID;
+
+        //Check if the playlist exists for this user
+        const [playlistRows] = await db.query(
+            "SELECT * FROM playlist WHERE Playlist_Name = ? AND User_ID = ?",
+            [oldPlaylistName, userID]
+        );
+        if (playlistRows.length === 0) {
+            return res.json({ success: false, message: "Playlist not found for this user" });
+        }
+
+        //Check if the new playlist name already exists for this user
+        const [duplicateCheck] = await db.query(
+            "SELECT * FROM playlist WHERE Playlist_Name = ? AND User_ID = ?",
+            [newPlaylistName, userID]
+        );
+        if (duplicateCheck.length > 0) {
+            return res.json({ success: false, message: "A playlist with the new name already exists" });
+        }
+
+        //Rename the playlist
+        await db.query(
+            "UPDATE playlist SET Playlist_Name = ? WHERE Playlist_Name = ? AND User_ID = ?",
+            [newPlaylistName, oldPlaylistName, userID]
+        );
+
+        return res.json({ success: true, message: "Playlist renamed successfully" });
+
+    } catch (error) {
+        return res.json({ success: false, message: error.message });
+    }
+};
+
+//display total duration of the playlist
+const getPlaylistDuration = async (req, res) => {
+    const { username, playlistName } = req.body;
+
+    if (!username || !playlistName) {
+        return res.json({ success: false, message: "Missing username or playlist name" });
+    }
+
+    try {
+        //Get User_ID from username
+        const [userRows] = await db.query("SELECT User_ID FROM User WHERE userName = ?", [username]);
+        if (userRows.length === 0) {
+            return res.json({ success: false, message: "User does not exist" });
+        }
+        const userID = userRows[0].User_ID;
+
+        //Get Playlist_ID
+        const [playlistRows] = await db.query(
+            "SELECT Playlist_ID FROM playlist WHERE Playlist_Name = ? AND User_ID = ?",
+            [playlistName, userID]
+        );
+        if (playlistRows.length === 0) {
+            return res.json({ success: false, message: "Playlist not found for this user" });
+        }
+        const playlistID = playlistRows[0].Playlist_ID;
+
+        //Get total duration in milliseconds
+        const [durationRows] = await db.query(
+            `SELECT SUM(n.Duration_MS) AS totalDuration
+             FROM playlist_songs ps
+             JOIN newsong n ON ps.Song_ID = n.songID
+             WHERE ps.Playlist_ID = ?`,
+            [playlistID]
+        );
+        //convert totalduration to minutes and seconds
+        const totalMs = durationRows[0].totalDuration || 0;
+        const totalSec = Math.floor(totalMs / 1000);
+        const minutes = Math.floor(totalSec / 60);
+        const seconds = totalSec % 60;
+
+        return res.json({
+            success: true,
+            playlist: playlistName,
+            totalDuration: `${minutes} min ${seconds} sec`
+        });
+
+    } catch (error) {
+        return res.json({ success: false, message: error.message });
+    }
+};
